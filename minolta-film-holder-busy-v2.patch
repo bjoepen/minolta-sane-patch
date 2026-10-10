@@ -1,0 +1,78 @@
+--- a/backend/avision.c
++++ b/backend/avision.c
+@@ -2496,10 +2496,11 @@
+   }
+ }
+ 
+-static SANE_Status avision_cmd (Avision_Connection* av_con,
++static SANE_Status avision_cmd_internal (Avision_Connection* av_con,
+ 				const void* cmd, size_t cmd_size,
+ 				const void* src, size_t src_size,
+-				void* dst, size_t* dst_size)
++				void* dst, size_t* dst_size,
++                                SANE_Bool minolta_holder_retry)
+ {
+   SANE_Char strcmd[80];
+   avision_strcmd (strcmd, sizeof (strcmd), cmd);
+@@ -2516,6 +2517,7 @@
+ #define STD_TIMEOUT 30000
+ #define STD_STATUS_TIMEOUT 10000
+     int retry = 4;
++    int holder_busy_retries = 0;
+     int write_timeout = STD_TIMEOUT;
+     int read_timeout = STD_TIMEOUT;
+     int status_timeout = STD_STATUS_TIMEOUT;
+@@ -2638,6 +2640,17 @@
+      * this is needed - otherwise the scanner will hang ... */
+     sanei_usb_set_timeout (status_timeout);
+     status = avision_usb_status (av_con, /*retry*/ 1, status_timeout);
++    /* The Scan Dual II may still be busy after a film-holder read.
++     * Only this opt-in command path receives a bounded delay.
++     * Preserve the normal retry budget for other I/O errors. */
++    if (minolta_holder_retry && status == SANE_STATUS_DEVICE_BUSY &&
++        holder_busy_retries < 20) {
++      ++holder_busy_retries;
++      ++retry; /* compensate the decrement at write_usb_cmd */
++      DBG (3, "Minolta film holder busy, retry %d/20\n", holder_busy_retries);
++      usleep (100000);
++      goto write_usb_cmd;
++    }
+     /* next i/o hardening attempt - and yes this gets ugly ... */
+     if (status != SANE_STATUS_GOOD && status != SANE_STATUS_INVAL)
+       goto write_usb_cmd;
+@@ -2696,6 +2709,19 @@
+     return status;
+   } /* end cmd usb */
+ }
++
++
++/* All existing callers retain the original USB retry behavior. */
++static SANE_Status
++avision_cmd (Avision_Connection* av_con,
++             const void* cmd, size_t cmd_size,
++             const void* src, size_t src_size,
++             void* dst, size_t* dst_size)
++{
++  return avision_cmd_internal (av_con, cmd, cmd_size, src, src_size,
++                              dst, dst_size, SANE_FALSE);
++}
++
+ 
+ /* A bubble sort for the calibration. It only sorts the first third
+  * and returns an average of the top 2/3 values. The input data is
+@@ -4155,7 +4181,14 @@
+   set_double (rcmd.datatypequal, dev->data_dq);
+   set_triple (rcmd.transferlen, size);
+ 
+-  status = avision_cmd (&s->av_con, &rcmd, sizeof (rcmd), 0, 0, result, &size);
++  /* Opt in only for the USB Minolta DiMAGE Scan Dual II (0638:026a). */
++  if (s->av_con.connection_type == AV_USB && dev->hw &&
++      dev->hw->usb_vendor == 0x0638 && dev->hw->usb_product == 0x026a)
++    status = avision_cmd_internal (&s->av_con, &rcmd, sizeof (rcmd),
++                                  0, 0, result, &size, SANE_TRUE);
++  else
++    status = avision_cmd (&s->av_con, &rcmd, sizeof (rcmd), 0, 0,
++                         result, &size);
+   if (status != SANE_STATUS_GOOD || size != sizeof (result)) {
+     status = (status != SANE_STATUS_GOOD)? status: SANE_STATUS_IO_ERROR;
+     DBG (1, "get_frame_info: read failed (%s)\n", sane_strstatus (status));
