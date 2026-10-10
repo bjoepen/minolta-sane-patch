@@ -31,6 +31,7 @@ jobs:
       - name: Generate configure and build
         run: |
           cd "$RUNNER_TEMP/backends-1.4.0"
+          printf "1.4.0\\n" > .tarball-version
           ./autogen.sh
           ./configure --prefix="$RUNNER_TEMP/sane-test-prefix" --disable-silent-rules
           make -j2
