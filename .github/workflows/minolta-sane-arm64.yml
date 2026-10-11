@@ -31,8 +31,9 @@ jobs:
           git apply --check "$GITHUB_WORKSPACE/minolta-gamma-4096-experimental.patch"
           git apply "$GITHUB_WORKSPACE/minolta-gamma-4096-experimental.patch"
           grep -n 'Research 004: Minolta Scan Dual II gamma transfer test' backend/avision.c
-          git diff --check
-          git diff -- backend/avision.c
+          # Upstream is a source tarball, not a Git working tree.
+          # git apply --check above validates both patches before application.
+          sed -n '5938,5965p' backend/avision.c
       - name: Generate configure and build
         run: |
           cd "$RUNNER_TEMP/backends-1.4.0"
