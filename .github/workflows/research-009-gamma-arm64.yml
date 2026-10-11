@@ -1,0 +1,73 @@
+name: Research 009 Minolta gamma interpolation ARM64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Apple Silicon
+        run: |
+          uname -m
+          test "$(uname -m)" = arm64
+      - name: Install build dependencies
+        run: |
+          brew install autoconf automake autoconf-archive libtool pkg-config jpeg-turbo libpng libtiff libusb net-snmp
+      - name: Fetch SANE 1.4.0 upstream source
+        run: |
+          curl --fail --location --retry 3 \
+            https://gitlab.com/sane-project/backends/-/archive/1.4.0/backends-1.4.0.tar.gz \
+            -o "$RUNNER_TEMP/sane.tar.gz"
+          tar -xzf "$RUNNER_TEMP/sane.tar.gz" -C "$RUNNER_TEMP"
+      - name: Apply film holder and Research 009 patches
+        run: |
+          cd "$RUNNER_TEMP/backends-1.4.0"
+          git apply --check "$GITHUB_WORKSPACE/minolta-film-holder-busy-v2.patch"
+          git apply "$GITHUB_WORKSPACE/minolta-film-holder-busy-v2.patch"
+          git apply --check "$GITHUB_WORKSPACE/research-009-gamma-interpolation.patch"
+          git apply "$GITHUB_WORKSPACE/research-009-gamma-interpolation.patch"
+          grep -n 'Minolta film holder busy' backend/avision.c
+          grep -n 'Research 009: Minolta Scan Dual II full gamma interpolation' backend/avision.c
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("backend/avision.c").read_text()
+          marker = "Research 009: Minolta Scan Dual II full gamma interpolation"
+          block = source[source.index(marker):source.index("gamma_values = gamma_table_size / 256;", source.index(marker))]
+          assert "dev->hw->usb_vendor == 0x0638" in block
+          assert "dev->hw->usb_product == 0x026a" in block
+          assert "dev->inquiry_asic_type == AV_ASIC_C2" in block
+          assert "gamma_table_raw_size = 4096;" in block
+          assert "gamma_table_size = 4096;" in block
+          print("Research 009 gamma configuration audit: PASS")
+          PY
+      - name: Generate configure and build
+        run: |
+          cd "$RUNNER_TEMP/backends-1.4.0"
+          printf "1.4.0\n" > .tarball-version
+          ./autogen.sh
+          ./configure --prefix="$RUNNER_TEMP/sane-test-prefix" --disable-silent-rules
+          make -j2
+      - name: Collect test binaries and linkage report
+        run: |
+          cd "$RUNNER_TEMP/backends-1.4.0"
+          mkdir -p "$GITHUB_WORKSPACE/artifact"
+          find backend -type f \( -name 'libsane-avision*.so*' -o -name 'libsane-avision*.dylib' \) -print -exec cp -v {} "$GITHUB_WORKSPACE/artifact/" \;
+          find "$GITHUB_WORKSPACE/artifact" -maxdepth 1 -type f -print | tee "$GITHUB_WORKSPACE/artifact/FILES.txt"
+          test "$(find "$GITHUB_WORKSPACE/artifact" -type f \( -name '*.so*' -o -name '*.dylib' \) | wc -l | tr -d ' ')" -gt 0
+          for f in "$GITHUB_WORKSPACE"/artifact/*.so* "$GITHUB_WORKSPACE"/artifact/*.dylib; do
+            test -f "$f" || continue
+            file "$f"
+            otool -L "$f"
+          done > "$GITHUB_WORKSPACE/artifact/LINKAGE.txt"
+          cat "$GITHUB_WORKSPACE/artifact/LINKAGE.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: minolta-research-009-gamma-interpolation-macos-arm64
+          path: artifact/
+          if-no-files-found: error
