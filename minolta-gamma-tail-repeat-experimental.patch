@@ -1,0 +1,30 @@
+--- a/backend/avision.c
++++ b/backend/avision.c
+@@ -6025,7 +6025,25 @@
+ 	if (i < gamma_table_raw_size) {
+ 	  DBG (4, "send_gamma: (old protocol) - filling the table.\n");
+-	  for ( ; i < gamma_table_raw_size; ++ i)
+-	    gamma_data [i] = gamma_data [t_i];
++	  /* Research 007 R7-1: for the Scan Dual II only, preserve the
++	   * calculated 512-byte block and repeat it to fill the already
++	   * established 4096-byte transfer.  This changes only bytes
++	   * 512..4095; transfer length, curve and channel commands stay
++	   * unchanged. */
++	  if (s->av_con.connection_type == AV_USB &&
++	      dev->hw &&
++	      dev->hw->usb_vendor == 0x0638 &&
++	      dev->hw->usb_product == 0x026a &&
++	      dev->inquiry_asic_type == AV_ASIC_C2 &&
++	      i == 512 && gamma_table_raw_size == 4096) {
++	    const size_t block_size = i;
++	    DBG (3, "send_gamma: Research 007 repeating 512-byte gamma block.\n");
++	    for ( ; i < gamma_table_raw_size; ++ i)
++	      gamma_data [i] = gamma_data [i % block_size];
++	  }
++	  else {
++	    for ( ; i < gamma_table_raw_size; ++ i)
++	      gamma_data [i] = gamma_data [t_i];
++	  }
+ 	}
+       }
+ 
