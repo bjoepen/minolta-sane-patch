@@ -28,6 +28,11 @@ jobs:
           git apply --check "$GITHUB_WORKSPACE/minolta-film-holder-busy-v2.patch"
           git apply "$GITHUB_WORKSPACE/minolta-film-holder-busy-v2.patch"
           grep -n 'Minolta film holder busy' backend/avision.c
+          git apply --check "$GITHUB_WORKSPACE/minolta-gamma-4096-experimental.patch"
+          git apply "$GITHUB_WORKSPACE/minolta-gamma-4096-experimental.patch"
+          grep -n 'Research 004: Minolta Scan Dual II gamma transfer test' backend/avision.c
+          git diff --check
+          git diff -- backend/avision.c
       - name: Generate configure and build
         run: |
           cd "$RUNNER_TEMP/backends-1.4.0"
@@ -50,6 +55,6 @@ jobs:
           cat "$GITHUB_WORKSPACE/artifact/LINKAGE.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: minolta-avision-macos-arm64-experimental
+          name: minolta-avision-macos-arm64-gamma4096-experimental
           path: artifact/
           if-no-files-found: error
