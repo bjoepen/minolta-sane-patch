@@ -1,0 +1,18 @@
+--- a/backend/avision.c
++++ b/backend/avision.c
+@@ -5942,6 +5942,17 @@
+       gamma_table_size = 512;
+     }
+ 
++  /* Research 004: Minolta Scan Dual II gamma transfer test.
++   * Restrict the 4096-byte transfer to USB device 0638:026a.
++   * Keep the original 512-byte gamma calculation unchanged.
++   */
++  if (s->av_con.connection_type == AV_USB &&
++      dev->hw &&
++      dev->hw->usb_vendor == 0x0638 &&
++      dev->hw->usb_product == 0x026a &&
++      dev->inquiry_asic_type == AV_ASIC_C2)
++    gamma_table_raw_size = 4096;
++
+   gamma_values = gamma_table_size / 256;
