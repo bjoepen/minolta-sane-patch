@@ -1,0 +1,21 @@
+--- a/backend/avision.c
++++ b/backend/avision.c
+@@ -5942,4 +5942,18 @@
+       gamma_table_size = 512;
+     }
+ 
++  /* Research 009: Minolta Scan Dual II full gamma interpolation.
++   * Restrict the 4096-byte transfer to USB device 0638:026a.
++   * Interpolate all 4096 gamma values instead of padding after 512.
++   */
++  if (s->av_con.connection_type == AV_USB &&
++      dev->hw &&
++      dev->hw->usb_vendor == 0x0638 &&
++      dev->hw->usb_product == 0x026a &&
++      dev->inquiry_asic_type == AV_ASIC_C2)
++    {
++      gamma_table_raw_size = 4096;
++      gamma_table_size = 4096;
++    }
++
+   gamma_values = gamma_table_size / 256;
