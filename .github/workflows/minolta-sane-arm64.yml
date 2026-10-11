@@ -1,4 +1,4 @@
-name: Minolta SANE ARM64 test build
+name: Minolta SANE ARM64 gamma-tail test build
 on:
   workflow_dispatch:
 
@@ -11,6 +11,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Validate analysis and payload tools
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 tools/verify_gamma_tail.py
       - name: Confirm Apple Silicon
         run: |
           uname -m
@@ -31,9 +35,14 @@ jobs:
           git apply --check "$GITHUB_WORKSPACE/minolta-gamma-4096-experimental.patch"
           git apply "$GITHUB_WORKSPACE/minolta-gamma-4096-experimental.patch"
           grep -n 'Research 004: Minolta Scan Dual II gamma transfer test' backend/avision.c
+          git apply --check "$GITHUB_WORKSPACE/minolta-gamma-tail-repeat-experimental.patch"
+          git apply "$GITHUB_WORKSPACE/minolta-gamma-tail-repeat-experimental.patch"
+          grep -n 'Research 007 R7-1' backend/avision.c
+          grep -n 'Research 007 repeating 512-byte gamma block' backend/avision.c
           # Upstream is a source tarball, not a Git working tree.
-          # git apply --check above validates both patches before application.
-          sed -n '5938,5965p' backend/avision.c
+          # Upstream is a source tarball, not a Git working tree.
+          # git apply --check above validates all patches before application.
+          sed -n '5938,6058p' backend/avision.c
       - name: Generate configure and build
         run: |
           cd "$RUNNER_TEMP/backends-1.4.0"
@@ -54,8 +63,22 @@ jobs:
             otool -L "$f"
           done > "$GITHUB_WORKSPACE/artifact/LINKAGE.txt"
           cat "$GITHUB_WORKSPACE/artifact/LINKAGE.txt"
+          cp "$GITHUB_WORKSPACE/minolta-film-holder-busy-v2.patch" "$GITHUB_WORKSPACE/artifact/"
+          cp "$GITHUB_WORKSPACE/minolta-gamma-4096-experimental.patch" "$GITHUB_WORKSPACE/artifact/"
+          cp "$GITHUB_WORKSPACE/minolta-gamma-tail-repeat-experimental.patch" "$GITHUB_WORKSPACE/artifact/"
+          {
+            echo "EXPERIMENT=Research 007 R7-1 gamma-tail repeat"
+            echo "SOURCE=SANE 1.4.0"
+            echo "TARGET=Minolta 0638:026a ASIC C2"
+            echo "TRANSFER_BYTES=4096"
+            echo "UNCHANGED_PREFIX_BYTES=512"
+            echo "TAIL=seven additional copies of the first 512-byte block"
+            echo "COMMIT=$GITHUB_SHA"
+            echo "NOT_FOR_PRODUCTION=1"
+          } > "$GITHUB_WORKSPACE/artifact/EXPERIMENT.txt"
+          shasum -a 256 "$GITHUB_WORKSPACE"/*.patch "$GITHUB_WORKSPACE"/artifact/libsane-avision* > "$GITHUB_WORKSPACE/artifact/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: minolta-avision-macos-arm64-gamma4096-experimental
+          name: minolta-avision-macos-arm64-r7-1-tail-repeat-experimental
           path: artifact/
           if-no-files-found: error
