@@ -1,6 +1,6 @@
 --- a/backend/avision.c
 +++ b/backend/avision.c
-@@ -5942,6 +5942,17 @@
+@@ -5942,4 +5942,15 @@
        gamma_table_size = 512;
      }
  
